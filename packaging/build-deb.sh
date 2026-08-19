@@ -2,7 +2,8 @@
 set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
-VERSION=${VERSION:-0.1.0}
+DEFAULT_VERSION=$(sed -n 's/^__version__ = "\([^"]*\)"/\1/p' "$ROOT/dotlet/__init__.py")
+VERSION=${VERSION:-$DEFAULT_VERSION}
 ARCH=${ARCH:-$(dpkg --print-architecture)}
 BUILD="$ROOT/build/deb-root"
 OUTPUT="$ROOT/dist"
