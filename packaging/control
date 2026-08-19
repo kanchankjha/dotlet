@@ -1,0 +1,13 @@
+Package: dotlet
+Version: @VERSION@
+Section: net
+Priority: optional
+Architecture: @ARCH@
+Maintainer: Dotlet maintainers <maintainers@localhost>
+Depends: bind9, bind9-utils, dnsutils, python3 (>= 3.10), python3-minimal, adduser, sudo, systemd
+Recommends: apparmor, ufw
+Conflicts: dotlet-dns
+Description: lightweight IPv4 and IPv6 DNS server with a small web UI
+ Dotlet manages BIND9 zones and common DNS records through a compact,
+ dependency-free web interface. It validates every generated configuration,
+ applies changes atomically, and rolls back failed reloads.

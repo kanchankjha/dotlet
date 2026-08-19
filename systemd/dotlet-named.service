@@ -1,0 +1,36 @@
+[Unit]
+Description=Dotlet BIND9 DNS server
+After=network.target
+Before=dotlet.service
+
+[Service]
+Type=notify
+User=bind
+Group=bind
+RuntimeDirectory=named
+RuntimeDirectoryMode=0750
+ExecStartPre=/usr/sbin/named-checkconf /etc/bind/dotlet/named.conf.generated
+ExecStart=/usr/sbin/named -f -c /etc/bind/dotlet/named.conf.generated
+ExecReload=/usr/sbin/rndc reload
+Restart=on-failure
+RestartSec=2s
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+NoNewPrivileges=true
+PrivateDevices=true
+PrivateTmp=true
+ProtectClock=true
+ProtectControlGroups=true
+ProtectHome=true
+ProtectKernelLogs=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+ProtectSystem=strict
+ReadWritePaths=/run/named /var/cache/bind /var/lib/bind
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictRealtime=true
+SystemCallArchitectures=native
+UMask=0027
+
+[Install]
+WantedBy=multi-user.target

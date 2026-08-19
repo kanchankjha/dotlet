@@ -1,0 +1,4 @@
+# Dotlet listens on loopback by default. Use an SSH tunnel or a TLS reverse proxy
+# for remote administration instead of exposing the UI directly.
+DOTLET_LISTEN=127.0.0.1:8080
+DOTLET_DATABASE=/var/lib/dotlet/dotlet.db

@@ -1,0 +1,30 @@
+[Unit]
+Description=Dotlet DNS management interface
+After=network.target dotlet-named.service
+Requires=dotlet-named.service
+
+[Service]
+Type=simple
+User=dotlet
+Group=dotlet
+EnvironmentFile=-/etc/default/dotlet
+ExecStart=/usr/bin/dotlet serve
+Restart=on-failure
+RestartSec=2s
+PrivateDevices=true
+PrivateTmp=true
+ProtectClock=true
+ProtectControlGroups=true
+ProtectHome=true
+ProtectKernelLogs=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+ProtectSystem=strict
+ReadWritePaths=/etc/bind /var/lib/dotlet
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictRealtime=true
+SystemCallArchitectures=native
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

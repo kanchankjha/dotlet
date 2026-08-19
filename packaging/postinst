@@ -1,0 +1,39 @@
+#!/bin/sh
+set -eu
+
+case "${1:-configure}" in
+  configure)
+    if ! getent group dotlet >/dev/null; then
+      addgroup --system dotlet
+    fi
+    if ! getent passwd dotlet >/dev/null; then
+      adduser --system --ingroup dotlet --home /var/lib/dotlet --no-create-home --shell /usr/sbin/nologin dotlet
+    fi
+    install -d -o dotlet -g dotlet -m 0700 /var/lib/dotlet /var/lib/dotlet/backups
+    install -d -o root -g bind -m 0750 /etc/bind/dotlet
+    /usr/bin/dotlet init
+    chown dotlet:dotlet /var/lib/dotlet/dotlet.db
+    chmod 0600 /var/lib/dotlet/dotlet.db
+
+    INITIAL_PASSWORD=$(/usr/bin/dotlet init-admin admin)
+    if [ -n "$INITIAL_PASSWORD" ]; then
+      umask 077
+      echo "$INITIAL_PASSWORD" > /var/lib/dotlet/initial-password
+      echo "Dotlet initial administrator password: $INITIAL_PASSWORD"
+      echo "It is also stored at /var/lib/dotlet/initial-password (root only)."
+    fi
+
+    /usr/libexec/dotlet-apply --install
+    if [ -d /run/systemd/system ]; then
+      systemctl stop named.service 2>/dev/null || true
+      systemctl stop bind9.service 2>/dev/null || true
+      systemctl disable named.service 2>/dev/null || true
+      systemctl daemon-reload
+      systemctl enable dotlet-named.service dotlet.service
+      systemctl restart dotlet-named.service
+      systemctl restart dotlet.service
+    fi
+    ;;
+esac
+
+exit 0

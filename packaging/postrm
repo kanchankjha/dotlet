@@ -1,0 +1,14 @@
+#!/bin/sh
+set -eu
+
+if [ "${1:-}" = purge ]; then
+  echo "Dotlet DNS data remains in /var/lib/dotlet for safety. Remove it manually when no longer needed."
+fi
+
+if { [ "${1:-}" = remove ] || [ "${1:-}" = purge ]; } && [ -d /run/systemd/system ]; then
+  systemctl daemon-reload 2>/dev/null || true
+  if [ -x /usr/sbin/named ]; then
+    systemctl enable --now named.service 2>/dev/null || true
+  fi
+fi
+exit 0

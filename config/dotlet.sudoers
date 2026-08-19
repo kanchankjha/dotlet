@@ -1,0 +1,2 @@
+# The web service may invoke only Dotlet's fixed-input validation/apply helper.
+dotlet ALL=(root) NOPASSWD: /usr/libexec/dotlet-apply
