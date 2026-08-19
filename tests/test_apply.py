@@ -4,12 +4,20 @@ import os
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
-from dotlet.apply import apply
+from dotlet.apply import apply, find_tool
 from dotlet.store import Store
 
 
 class ApplyTests(unittest.TestCase):
+    def test_tools_are_resolved_from_path(self) -> None:
+        with patch("dotlet.apply.shutil.which", return_value="/usr/bin/named-checkconf"):
+            self.assertEqual(find_tool("named-checkconf"), "/usr/bin/named-checkconf")
+        with patch("dotlet.apply.shutil.which", return_value=None):
+            with self.assertRaisesRegex(FileNotFoundError, "bind9-utils"):
+                find_tool("named-checkconf")
+
     def test_apply_generates_validated_tree_and_backup(self) -> None:
         with tempfile.TemporaryDirectory() as raw:
             root = Path(raw)

@@ -19,6 +19,16 @@ def run_checked(command: list[str]) -> None:
         raise RuntimeError((result.stderr or result.stdout or "command failed").strip())
 
 
+def find_tool(name: str) -> str:
+    path = shutil.which(name)
+    if path is None:
+        raise FileNotFoundError(
+            f"Required command '{name}' was not found in PATH. "
+            "Install or repair the bind9 and bind9-utils packages."
+        )
+    return path
+
+
 def set_bind_permissions(path: Path) -> None:
     try:
         bind_gid = grp.getgrnam("bind").gr_gid
@@ -90,7 +100,15 @@ def main() -> int:
     parser.add_argument("--backups", default="/var/lib/dotlet/backups")
     parser.add_argument("--install", action="store_true", help=argparse.SUPPRESS)
     args = parser.parse_args()
-    apply(Path(args.database), Path(args.target), Path(args.backups), checkconf="/usr/sbin/named-checkconf", checkzone="/usr/sbin/named-checkzone", rndc="/usr/sbin/rndc", reload_server=not args.install)
+    apply(
+        Path(args.database),
+        Path(args.target),
+        Path(args.backups),
+        checkconf=find_tool("named-checkconf"),
+        checkzone=find_tool("named-checkzone"),
+        rndc=find_tool("rndc"),
+        reload_server=not args.install,
+    )
     print("Dotlet configuration applied")
     return 0
 
