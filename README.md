@@ -15,15 +15,46 @@ Dotlet is a lightweight IPv4 and IPv6 DNS server for Ubuntu and Kali Linux. It r
 - Runs the UI on loopback by default and includes hardened systemd units.
 - Installs BIND9 and all runtime dependencies automatically through APT.
 
-## Install the Debian package
+## Installation
+
+### Option 1: install from a Git checkout
+
+Clone the repository on an Ubuntu, Kali, or Debian host and run the checkout installer:
+
+```bash
+git clone https://github.com/kanchankjha/dotlet.git
+cd dotlet
+./install.sh
+```
+
+The script refreshes APT metadata, builds a local `.deb`, and asks APT to install it. APT installs BIND9 and every other declared runtime dependency automatically. The package lifecycle remains managed by APT even though it was built from source.
+
+To use existing package indexes without running `apt-get update`:
+
+```bash
+./install.sh --no-update
+```
+
+Pull updates and run the installer again to upgrade a checkout installation:
+
+```bash
+git pull --ff-only
+./install.sh
+```
+
+Do not pipe an internet download directly into a root shell. Review the checked-out source and installer before running it.
+
+### Option 2: build and install the Debian package manually
 
 On a Debian-based build host:
 
 ```bash
 make test
 make package
-sudo apt install ./dist/dotlet_0.1.0_amd64.deb
+sudo apt install "./dist/dotlet_0.1.0_$(dpkg --print-architecture).deb"
 ```
+
+If you obtained a prebuilt Dotlet `.deb`, the same `apt install ./dotlet_VERSION_ARCH.deb` command can install it without a source checkout.
 
 Use `apt install ./...deb`, not `dpkg -i`, so APT resolves and installs the declared dependencies:
 
