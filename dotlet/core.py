@@ -206,7 +206,10 @@ def render_named_config(zones: Sequence[Zone], settings: Mapping[str, str], zone
         ])
     else:
         lines.append("    allow-query-cache { none; };")
-    lines.extend(["};", 'include "/etc/bind/named.conf.default-zones";'])
+    # BIND provides compiled-in root hints when no hint zone is configured.
+    # Avoid distribution-specific includes such as named.conf.default-zones,
+    # which is present on Ubuntu but not on every Kali installation.
+    lines.append("};")
     for zone in sorted(zones, key=lambda item: item.name):
         lines.extend([
             f'zone "{zone.name}" {{',
