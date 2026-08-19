@@ -41,6 +41,54 @@ def set_bind_permissions(path: Path) -> None:
             os.chown(item, 0, bind_gid)
 
 
+def configuration_is_valid(target: Path, checkconf: str) -> bool:
+    configuration = target / "named.conf.generated"
+    if not configuration.is_file():
+        return False
+    result = subprocess.run(
+        [checkconf, str(configuration)],
+        text=True,
+        capture_output=True,
+        check=False,
+        timeout=30,
+    )
+    return result.returncode == 0
+
+
+def install_empty_configuration(target: Path, checkconf: str) -> None:
+    """Install a safe localhost-only configuration so the UI can repair saved data."""
+    target.parent.mkdir(parents=True, exist_ok=True)
+    staging = Path(tempfile.mkdtemp(prefix=".dotlet-recovery-", dir=target.parent))
+    previous = target.parent / f".dotlet-invalid-{os.getpid()}"
+    try:
+        output = render_all(
+            [],
+            [],
+            {"recursion": "no", "trusted_networks": "127.0.0.0/8\n::1/128"},
+            target / "zones",
+        )
+        for relative, content in output.items():
+            destination = staging / relative
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination.write_text(content, encoding="utf-8")
+            destination.chmod(0o640)
+        run_checked([checkconf, str(staging / "named.conf.generated")])
+        if target.exists():
+            os.replace(target, previous)
+        os.replace(staging, target)
+        set_bind_permissions(target)
+        if previous.exists():
+            shutil.rmtree(previous)
+    finally:
+        if staging.exists():
+            shutil.rmtree(staging, ignore_errors=True)
+        if previous.exists():
+            if not target.exists():
+                os.replace(previous, target)
+            else:
+                shutil.rmtree(previous, ignore_errors=True)
+
+
 def apply(database: Path, target: Path, backup_root: Path, *, checkconf: str, checkzone: str, rndc: str, reload_server: bool = True) -> None:
     if os.geteuid() != 0 and os.environ.get("DOTLET_ALLOW_UNPRIVILEGED_APPLY") != "1":
         raise PermissionError("dotlet-apply must run as root")
@@ -101,19 +149,42 @@ def main() -> int:
     parser.add_argument("--backups", default="/var/lib/dotlet/backups")
     parser.add_argument("--install", action="store_true", help=argparse.SUPPRESS)
     args = parser.parse_args()
+    checkconf: str | None = None
     try:
+        checkconf = find_tool("named-checkconf")
         apply(
             Path(args.database),
             Path(args.target),
             Path(args.backups),
-            checkconf=find_tool("named-checkconf"),
+            checkconf=checkconf,
             checkzone=find_tool("named-checkzone"),
             rndc=find_tool("rndc"),
             reload_server=not args.install,
         )
     except Exception as exc:
         print(f"Dotlet apply failed: {exc}", file=sys.stderr)
-        return 1
+        if not args.install or checkconf is None:
+            return 1
+        target = Path(args.target)
+        if configuration_is_valid(target, checkconf):
+            print(
+                "Dotlet install warning: saved DNS changes were not published; "
+                "continuing with the last valid configuration.",
+                file=sys.stderr,
+            )
+            return 0
+        try:
+            install_empty_configuration(target, checkconf)
+        except Exception as recovery_exc:
+            print(f"Dotlet recovery configuration failed: {recovery_exc}", file=sys.stderr)
+            return 1
+        print(
+            "Dotlet install warning: saved DNS changes were not published; "
+            "a localhost-only recovery configuration was installed. "
+            "Correct the zone in the UI and select Validate & apply.",
+            file=sys.stderr,
+        )
+        return 0
     print("Dotlet configuration applied")
     return 0
 

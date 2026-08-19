@@ -5,13 +5,18 @@ ROOT=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 SKIP_UPDATE=0
 PASSWORD_MODE=random
 PASSWORD_MODE_SET=0
+ACTION=install
+ACTION_SET=0
 
 usage() {
   cat <<'EOF'
-Usage: ./install.sh [--no-update] [--prompt-password | --random-password]
+Usage: ./install.sh [--no-update] [--reinstall] [--prompt-password | --random-password]
+       ./install.sh --remove
 
 Build Dotlet from this Git checkout and install it with APT.
   --no-update        Do not refresh APT package indexes before installation.
+  --reinstall        Force APT to reinstall Dotlet even when the version is unchanged.
+  --remove           Remove Dotlet while preserving its DNS data and backups.
   --prompt-password  Securely prompt for the admin password after installation.
   --random-password  Generate a random admin password (the default).
 EOF
@@ -20,6 +25,19 @@ EOF
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --no-update) SKIP_UPDATE=1 ;;
+    --reinstall|--remove)
+      if [ "$ACTION_SET" -eq 1 ]; then
+        echo "Choose only one install action." >&2
+        usage >&2
+        exit 2
+      fi
+      ACTION_SET=1
+      if [ "$1" = "--remove" ]; then
+        ACTION=remove
+      else
+        ACTION=reinstall
+      fi
+      ;;
     --prompt-password|--random-password)
       if [ "$PASSWORD_MODE_SET" -eq 1 ]; then
         echo "Choose only one password mode." >&2
@@ -38,6 +56,12 @@ while [ "$#" -gt 0 ]; do
   esac
   shift
 done
+
+if [ "$ACTION" = "remove" ] && [ "$PASSWORD_MODE_SET" -eq 1 ]; then
+  echo "Password options cannot be used with --remove." >&2
+  usage >&2
+  exit 2
+fi
 
 if [ ! -r /etc/os-release ]; then
   echo "Dotlet source installation requires Ubuntu, Kali, or another Debian-based Linux distribution." >&2
@@ -64,6 +88,14 @@ run_root() {
     exit 1
   fi
 }
+
+if [ "$ACTION" = "remove" ]; then
+  run_root apt-get remove -y dotlet
+  echo
+  echo "Dotlet was removed. DNS data and backups remain in /var/lib/dotlet."
+  echo "To permanently delete retained data, review that directory and remove it manually."
+  exit 0
+fi
 
 if [ "$SKIP_UPDATE" -eq 0 ]; then
   run_root apt-get update
@@ -97,7 +129,11 @@ cleanup() {
 }
 trap cleanup EXIT HUP INT TERM
 
-run_root apt-get install -y "$APT_PACKAGE"
+if [ "$ACTION" = "reinstall" ]; then
+  run_root apt-get install --reinstall -y "$APT_PACKAGE"
+else
+  run_root apt-get install -y "$APT_PACKAGE"
+fi
 
 if [ "$PASSWORD_MODE" = "prompt" ]; then
   run_root /usr/bin/dotlet set-password admin --prompt
