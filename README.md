@@ -46,6 +46,20 @@ To use existing package indexes without running `apt-get update`:
 ./install.sh --no-update
 ```
 
+Force a reinstall from the checkout when APT reports that the same version is already installed:
+
+```bash
+./install.sh --reinstall
+```
+
+Password selection can be combined with reinstall, for example `./install.sh --reinstall --prompt-password`.
+
+Remove the package and services while preserving zones, settings, audit history, and backups under `/var/lib/dotlet`:
+
+```bash
+./install.sh --remove
+```
+
 Pull updates and run the installer again to upgrade a checkout installation:
 
 ```bash
@@ -62,7 +76,7 @@ On a Debian-based build host:
 ```bash
 make test
 make package
-sudo apt install "./dist/dotlet_0.2.0_$(dpkg --print-architecture).deb"
+sudo apt install "./dist/dotlet_0.2.1_$(dpkg --print-architecture).deb"
 ```
 
 If you obtained a prebuilt Dotlet `.deb`, the same `apt install ./dotlet_VERSION_ARCH.deb` command can install it without a source checkout.
