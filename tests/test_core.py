@@ -36,6 +36,7 @@ class CoreTests(unittest.TestCase):
         self.assertIn("listen-on port 53 { any; };", config)
         self.assertIn("listen-on-v6 port 53 { any; };", config)
         self.assertIn("recursion no;", config)
+        self.assertNotIn("named.conf.default-zones", config)
         self.assertIn("www IN AAAA 2001:db8::10", output["zones/db.example.test"])
 
 
