@@ -42,6 +42,7 @@ class Record:
     type: str
     value: str
     ttl: int | None = None
+    managed_by: str = ""
 
 
 def canonical_zone(value: str) -> str:

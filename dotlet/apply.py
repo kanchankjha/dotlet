@@ -5,6 +5,7 @@ import grp
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
@@ -100,15 +101,19 @@ def main() -> int:
     parser.add_argument("--backups", default="/var/lib/dotlet/backups")
     parser.add_argument("--install", action="store_true", help=argparse.SUPPRESS)
     args = parser.parse_args()
-    apply(
-        Path(args.database),
-        Path(args.target),
-        Path(args.backups),
-        checkconf=find_tool("named-checkconf"),
-        checkzone=find_tool("named-checkzone"),
-        rndc=find_tool("rndc"),
-        reload_server=not args.install,
-    )
+    try:
+        apply(
+            Path(args.database),
+            Path(args.target),
+            Path(args.backups),
+            checkconf=find_tool("named-checkconf"),
+            checkzone=find_tool("named-checkzone"),
+            rndc=find_tool("rndc"),
+            reload_server=not args.install,
+        )
+    except Exception as exc:
+        print(f"Dotlet apply failed: {exc}", file=sys.stderr)
+        return 1
     print("Dotlet configuration applied")
     return 0
 

@@ -9,6 +9,7 @@ import socket
 import sqlite3
 import subprocess
 import sys
+import threading
 import time
 from http import HTTPStatus
 from http.cookies import SimpleCookie
@@ -18,6 +19,7 @@ from urllib.parse import parse_qs, quote, urlparse
 
 from . import __version__
 from .core import SUPPORTED_TYPES, ValidationError
+from .interfaces import InterfaceSync
 from .store import Store, random_password
 
 
@@ -60,6 +62,13 @@ class DotletServer(ThreadingHTTPServer):
         super().__init__(address, Handler)
         self.store = store
         self.apply_command = apply_command
+        self.apply_lock = threading.Lock()
+        self.interface_sync = InterfaceSync(
+            store,
+            apply_command,
+            self.apply_lock,
+            float(os.environ.get("DOTLET_SYNC_INTERVAL", "15")),
+        )
         self.sessions: dict[str, tuple[str, str, float]] = {}
 
 
@@ -106,7 +115,11 @@ class Handler(BaseHTTPRequestHandler):
         try:
             if path == "/zones/add":
                 self.server.store.add_zone(form.get("name", ""), form.get("ttl", "300"), form.get("primary_ns", ""), form.get("admin_email", ""), actor)
-                self._redirect("/?ok=" + quote("Zone added. Apply changes to publish it."))
+                if self.server.store.snapshot()[2].get("auto_sync") == "yes":
+                    changed = self.server.interface_sync.sync_once(force_apply=True)
+                    self._redirect("/?ok=" + quote(f"Zone added and applied; automatic sync made {changed} managed record changes."))
+                else:
+                    self._redirect("/?ok=" + quote("Zone added. Apply changes to publish it."))
             elif path == "/zones/delete":
                 self.server.store.delete_zone(int(form["zone_id"]), actor)
                 self._redirect("/?ok=" + quote("Zone deleted. Apply changes to publish it."))
@@ -117,10 +130,24 @@ class Handler(BaseHTTPRequestHandler):
                 self.server.store.delete_record(int(form["record_id"]), actor)
                 self._redirect("/?ok=" + quote("Record deleted. Apply changes to publish it."))
             elif path == "/settings":
-                self.server.store.update_settings(form.get("recursion") == "yes", form.get("trusted_networks", ""), actor)
-                self._redirect("/?ok=" + quote("Settings saved. Apply changes to publish them."))
+                auto_sync = form.get("auto_sync") == "yes"
+                self.server.store.update_settings(
+                    form.get("recursion") == "yes",
+                    form.get("trusted_networks", ""),
+                    actor,
+                    auto_sync=auto_sync,
+                    sync_interfaces=form.get("sync_interfaces", "*"),
+                    sync_ipv4=form.get("sync_ipv4") == "yes",
+                    sync_ipv6=form.get("sync_ipv6") == "yes",
+                )
+                if auto_sync:
+                    changed = self.server.interface_sync.sync_once(force_apply=True)
+                    self._redirect("/?ok=" + quote(f"Settings applied; automatic sync made {changed} managed record changes."))
+                else:
+                    self._redirect("/?ok=" + quote("Settings saved. Apply changes to publish them."))
             elif path == "/apply":
-                result = subprocess.run(self.server.apply_command, text=True, capture_output=True, timeout=45, check=False)
+                with self.server.apply_lock:
+                    result = subprocess.run(self.server.apply_command, text=True, capture_output=True, timeout=45, check=False)
                 if result.returncode:
                     raise RuntimeError((result.stderr or result.stdout or "Apply command failed").strip())
                 self._redirect("/?ok=" + quote("Configuration validated and applied successfully."))
@@ -141,26 +168,37 @@ class Handler(BaseHTTPRequestHandler):
             notice = f'<div class="flash error">{html.escape(query["error"][0])}</div>'
         csrf = html.escape(session[1])
         zone_options = "".join(f'<option value="{z.id}">{html.escape(z.name)}</option>' for z in zones)
-        record_rows = "".join(
-            f"<tr><td>{html.escape(next(z.name for z in zones if z.id == r.zone_id))}</td><td class=mono>{html.escape(r.name)}</td><td><span class=pill>{r.type}</span></td><td class='mono record-value'>{html.escape(r.value)}</td><td>{r.ttl or 'default'}</td><td><form class=inline method=post action=/records/delete><input type=hidden name=csrf value='{csrf}'><input type=hidden name=record_id value='{r.id}'><button class=danger>Delete</button></form></td></tr>"
-            for r in records
-        ) or '<tr><td colspan="6" class="empty">No records yet.</td></tr>'
+        record_rows_list = []
+        for record in records:
+            managed = bool(record.managed_by)
+            record_type = f'<span class=pill>{record.type}</span>' + (' <span class=pill>Auto</span>' if managed else '')
+            action = '<span class=muted>Managed</span>' if managed else f"<form class=inline method=post action=/records/delete><input type=hidden name=csrf value='{csrf}'><input type=hidden name=record_id value='{record.id}'><button class=danger>Delete</button></form>"
+            record_rows_list.append(
+                f"<tr><td>{html.escape(next(z.name for z in zones if z.id == record.zone_id))}</td>"
+                f"<td class=mono>{html.escape(record.name)}</td><td>{record_type}</td>"
+                f"<td class='mono record-value'>{html.escape(record.value)}</td>"
+                f"<td>{record.ttl or 'default'}</td><td>{action}</td></tr>"
+            )
+        record_rows = "".join(record_rows_list) or '<tr><td colspan="6" class="empty">No records yet.</td></tr>'
         zone_rows = "".join(
             f"<tr><td><strong>{html.escape(z.name)}</strong></td><td>{z.default_ttl}s</td><td class=mono>{z.serial}</td><td><form class=inline method=post action=/zones/delete><input type=hidden name=csrf value='{csrf}'><input type=hidden name=zone_id value='{z.id}'><button class=danger>Delete</button></form></td></tr>"
             for z in zones
         ) or '<tr><td colspan="4" class="empty">Create your first zone below.</td></tr>'
         audits = "".join(f"<tr><td>{html.escape(row['created_at'])}</td><td>{html.escape(row['actor'])}</td><td>{html.escape(row['action'])}</td><td>{html.escape(row['detail'])}</td></tr>" for row in self.server.store.audits(12))
         types = "".join(f"<option>{item}</option>" for item in SUPPORTED_TYPES)
-        checked = " checked" if settings.get("recursion") == "yes" else ""
+        recursion_checked = " checked" if settings.get("recursion") == "yes" else ""
+        sync_checked = " checked" if settings.get("auto_sync") == "yes" else ""
+        sync_v4_checked = " checked" if settings.get("sync_ipv4", "yes") == "yes" else ""
+        sync_v6_checked = " checked" if settings.get("sync_ipv6", "yes") == "yes" else ""
         no_zone = " disabled" if not zones else ""
         v4_status = '<span class=pill>IPv4 listening</span>' if ipv4_up else '<span class="pill">IPv4 offline</span>'
         v6_status = '<span class=pill>IPv6 listening</span>' if ipv6_up else '<span class="pill">IPv6 offline</span>'
         body = f"""{notice}<div class="actions top-actions"><div><h1>DNS control</h1><div class=muted>{len(zones)} zones · {len(records)} records &nbsp; {v4_status} {v6_status}</div></div><form class="right inline" method=post action=/apply><input type=hidden name=csrf value="{csrf}"><button>Validate &amp; apply</button></form></div>
         <section class=card><h2>Zones</h2><table><thead><tr><th>Zone</th><th>TTL</th><th>SOA serial</th><th></th></tr></thead><tbody>{zone_rows}</tbody></table></section>
-        <div class=grid style="margin-top:18px"><section class=card><h2>Add zone</h2><form method=post action=/zones/add><input type=hidden name=csrf value="{csrf}"><label>Zone name</label><input name=name placeholder="example.test" required><label>Primary nameserver</label><input name=primary_ns placeholder="ns1.example.test" required><label>SOA administrator</label><input name=admin_email placeholder="hostmaster.example.test" required><label>Default TTL</label><input name=ttl type=number value=300 min=30 required><div style="margin-top:15px"><button>Add zone</button></div></form></section>
+        <div class=grid style="margin-top:18px"><section class=card><h2>Add zone</h2><form method=post action=/zones/add><input type=hidden name=csrf value="{csrf}"><label>Zone name</label><input name=name placeholder="home.arpa" required><label>Primary DNS hostname</label><input name=primary_ns placeholder="ns1.home.arpa" required><p class=muted>Automatic sync can maintain this hostname's A and AAAA records from Linux interfaces.</p><label>SOA administrator</label><input name=admin_email placeholder="hostmaster.home.arpa" required><label>Default TTL</label><input name=ttl type=number value=300 min=30 required><div style="margin-top:15px"><button>Add zone</button></div></form></section>
         <section class=card><h2>Add record</h2><form method=post action=/records/add><input type=hidden name=csrf value="{csrf}"><label>Zone</label><select name=zone_id{no_zone}>{zone_options}</select><div class=grid><div><label>Name</label><input name=name value="@" required></div><div><label>Type</label><select name=type>{types}</select></div></div><label>Value</label><input name=value placeholder="192.0.2.10" required><label>TTL <span class=muted>(blank uses zone default)</span></label><input name=ttl type=number min=30><div style="margin-top:15px"><button{no_zone}>Add record</button></div></form></section></div>
         <section class=card style="margin-top:18px"><h2>Records</h2><div style="overflow-x:auto"><table><thead><tr><th>Zone</th><th>Name</th><th>Type</th><th>Value</th><th>TTL</th><th></th></tr></thead><tbody>{record_rows}</tbody></table></div></section>
-        <div class=grid style="margin-top:18px"><section class=card><h2>Access and recursion</h2><form method=post action=/settings><input type=hidden name=csrf value="{csrf}"><label><input style="width:auto" type=checkbox name=recursion value=yes{checked}> Enable recursive resolution for trusted clients</label><label>Trusted IPv4/IPv6 networks</label><textarea class=mono name=trusted_networks required>{html.escape(settings.get('trusted_networks',''))}</textarea><p class=muted>Dotlet listens on every interface but answers only these networks.</p><button>Save settings</button></form></section>
+        <div class=grid style="margin-top:18px"><section class=card><h2>Access and interface sync</h2><form method=post action=/settings><input type=hidden name=csrf value="{csrf}"><label><input style="width:auto" type=checkbox name=recursion value=yes{recursion_checked}> Enable recursive resolution for trusted clients</label><label>Trusted IPv4/IPv6 networks</label><textarea class=mono name=trusted_networks required>{html.escape(settings.get('trusted_networks',''))}</textarea><p class=muted>Dotlet listens on every interface but answers only these networks.</p><h3 style="margin-top:20px">Nameserver addresses</h3><label><input style="width:auto" type=checkbox name=auto_sync value=yes{sync_checked}> Automatically synchronize the primary nameserver</label><label>Interfaces</label><input class=mono name=sync_interfaces value="{html.escape(settings.get('sync_interfaces','*'))}" required><p class=muted>Use <span class=mono>*</span> for all eligible current and future interfaces, or list names such as <span class=mono>eth0 wlan0</span>. Wildcard mode excludes loopback and common container interfaces.</p><div class=actions><label><input style="width:auto" type=checkbox name=sync_ipv4 value=yes{sync_v4_checked}> IPv4</label><label><input style="width:auto" type=checkbox name=sync_ipv6 value=yes{sync_v6_checked}> IPv6</label></div><p class=muted>Link-local, tentative, deprecated and temporary IPv6 addresses are never published. Changes are checked every 15 seconds.</p><button>Save settings</button></form></section>
         <section class=card><h2>Recent changes</h2><div style="overflow:auto;max-height:350px"><table><thead><tr><th>Time</th><th>User</th><th>Action</th><th>Detail</th></tr></thead><tbody>{audits}</tbody></table></div></section></div>"""
         self._html(page("Dashboard", body, authenticated=True))
 
@@ -268,11 +306,13 @@ def main(argv: list[str] | None = None) -> int:
     command = os.environ.get("DOTLET_APPLY_COMMAND", "sudo -n /usr/libexec/dotlet-apply").split()
     server = DotletServer((host, int(port)), store, command)
     print(f"Dotlet {__version__} listening on http://{host}:{port}", flush=True)
+    server.interface_sync.start()
     try:
         server.serve_forever()
     except KeyboardInterrupt:
         pass
     finally:
+        server.interface_sync.stop()
         server.server_close()
     return 0
 
