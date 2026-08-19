@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import getpass
 import html
 import json
 import os
@@ -280,7 +281,17 @@ def main(argv: list[str] | None = None) -> int:
     serve.add_argument("--listen", default=os.environ.get("DOTLET_LISTEN", "127.0.0.1:8080"))
     password = sub.add_parser("set-password", help="create or update an administrator")
     password.add_argument("username")
-    password.add_argument("--password-stdin", action="store_true")
+    password_source = password.add_mutually_exclusive_group()
+    password_source.add_argument(
+        "--prompt",
+        action="store_true",
+        help="prompt twice for a password without displaying it",
+    )
+    password_source.add_argument(
+        "--password-stdin",
+        action="store_true",
+        help="read one password line from standard input",
+    )
     sub.add_parser("init", help="initialize the database")
     initial = sub.add_parser("init-admin", help="create the first administrator only when no user exists")
     initial.add_argument("username", default="admin", nargs="?")
@@ -297,10 +308,30 @@ def main(argv: list[str] | None = None) -> int:
         print(generated)
         return 0
     if args.command == "set-password":
-        entered = sys.stdin.readline().rstrip("\n") if args.password_stdin else random_password()
-        store.set_password(args.username, entered)
-        if not args.password_stdin:
+        generated = not args.password_stdin and not args.prompt
+        if args.password_stdin:
+            entered = sys.stdin.readline().rstrip("\r\n")
+        elif args.prompt:
+            try:
+                entered = getpass.getpass("New Dotlet password: ")
+                confirmed = getpass.getpass("Confirm Dotlet password: ")
+            except (EOFError, KeyboardInterrupt):
+                print("dotlet: password entry cancelled", file=sys.stderr)
+                return 2
+            if entered != confirmed:
+                print("dotlet: passwords do not match", file=sys.stderr)
+                return 2
+        else:
+            entered = random_password()
+        try:
+            store.set_password(args.username, entered)
+        except ValueError as exc:
+            print(f"dotlet: {exc}", file=sys.stderr)
+            return 2
+        if generated:
             print(entered)
+        elif args.prompt:
+            print(f"Password updated for {args.username}.")
         return 0
     host, port = args.listen.rsplit(":", 1)
     command = os.environ.get("DOTLET_APPLY_COMMAND", "sudo -n /usr/libexec/dotlet-apply").split()
