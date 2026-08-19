@@ -30,6 +30,14 @@ cd dotlet
 
 The script refreshes APT metadata, builds a local `.deb`, and asks APT to install it. APT installs BIND9 and every other declared runtime dependency automatically. The package lifecycle remains managed by APT even though it was built from source.
 
+By default, installation generates a random `admin` password. To choose the password yourself, use the secure hidden prompt:
+
+```bash
+./install.sh --prompt-password
+```
+
+The prompt asks for confirmation and requires at least 12 characters. `--random-password` explicitly selects the default random-password behavior. These options can be combined with `--no-update` in either order.
+
 The installer resolves BIND utilities from the distribution's `PATH`, so it supports both Ubuntu and Kali filesystem layouts. It copies the generated package into a temporary APT-readable directory before installation.
 
 To use existing package indexes without running `apt-get update`:
@@ -68,11 +76,19 @@ Use `apt install ./...deb`, not `dpkg -i`, so APT resolves and installs the decl
 - `sudo`
 - `systemd`
 
-The installer creates a random `admin` password. It prints the password once and saves it in `/var/lib/dotlet/initial-password`, readable only by root:
+With the default random-password mode, the package prints the initial `admin` password once and saves it in `/var/lib/dotlet/initial-password`, readable only by root:
 
 ```bash
 sudo cat /var/lib/dotlet/initial-password
 ```
+
+Change the password later with a hidden confirmation prompt:
+
+```bash
+sudo dotlet set-password admin --prompt
+```
+
+Running `sudo dotlet set-password admin` without a password option generates and prints a new random password. For non-interactive automation, `--password-stdin` reads one line from standard input; protect the input source and do not put passwords directly in command arguments.
 
 Open an SSH tunnel from an administrator workstation:
 
@@ -141,7 +157,7 @@ The development command uses `/bin/true` instead of applying BIND configuration.
 | `/etc/bind/dotlet/` | Generated BIND configuration and zone files |
 | `/var/lib/dotlet/dotlet.db` | Users, settings, zones, records, and audit trail |
 | `/var/lib/dotlet/backups/` | Last-known-good generated configurations |
-| `/var/lib/dotlet/initial-password` | First-install password; delete after recording it |
+| `/var/lib/dotlet/initial-password` | Random first-install password; removed automatically when `--prompt-password` is used |
 
 ## Removal
 

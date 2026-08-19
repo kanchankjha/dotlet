@@ -3,22 +3,41 @@ set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 SKIP_UPDATE=0
+PASSWORD_MODE=random
+PASSWORD_MODE_SET=0
 
 usage() {
   cat <<'EOF'
-Usage: ./install.sh [--no-update]
+Usage: ./install.sh [--no-update] [--prompt-password | --random-password]
 
 Build Dotlet from this Git checkout and install it with APT.
-  --no-update  Do not refresh APT package indexes before installation.
+  --no-update        Do not refresh APT package indexes before installation.
+  --prompt-password  Securely prompt for the admin password after installation.
+  --random-password  Generate a random admin password (the default).
 EOF
 }
 
-case "${1:-}" in
-  "") ;;
-  --no-update) SKIP_UPDATE=1 ;;
-  -h|--help) usage; exit 0 ;;
-  *) usage >&2; exit 2 ;;
-esac
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --no-update) SKIP_UPDATE=1 ;;
+    --prompt-password|--random-password)
+      if [ "$PASSWORD_MODE_SET" -eq 1 ]; then
+        echo "Choose only one password mode." >&2
+        usage >&2
+        exit 2
+      fi
+      PASSWORD_MODE_SET=1
+      if [ "$1" = "--prompt-password" ]; then
+        PASSWORD_MODE=prompt
+      else
+        PASSWORD_MODE=random
+      fi
+      ;;
+    -h|--help) usage; exit 0 ;;
+    *) usage >&2; exit 2 ;;
+  esac
+  shift
+done
 
 if [ ! -r /etc/os-release ]; then
   echo "Dotlet source installation requires Ubuntu, Kali, or another Debian-based Linux distribution." >&2
@@ -80,7 +99,16 @@ trap cleanup EXIT HUP INT TERM
 
 run_root apt-get install -y "$APT_PACKAGE"
 
+if [ "$PASSWORD_MODE" = "prompt" ]; then
+  run_root /usr/bin/dotlet set-password admin --prompt
+  run_root rm -f /var/lib/dotlet/initial-password
+fi
+
 echo
 echo "Dotlet $VERSION is installed."
-echo "Initial password: sudo cat /var/lib/dotlet/initial-password"
+if [ "$PASSWORD_MODE" = "random" ]; then
+  echo "Initial password: sudo cat /var/lib/dotlet/initial-password"
+else
+  echo "Admin password: the password entered during installation"
+fi
 echo "UI (through an SSH tunnel): http://127.0.0.1:8080"
