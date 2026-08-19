@@ -53,7 +53,7 @@ On a Debian-based build host:
 ```bash
 make test
 make package
-sudo apt install "./dist/dotlet_0.1.0_$(dpkg --print-architecture).deb"
+sudo apt install "./dist/dotlet_0.1.1_$(dpkg --print-architecture).deb"
 ```
 
 If you obtained a prebuilt Dotlet `.deb`, the same `apt install ./dotlet_VERSION_ARCH.deb` command can install it without a source checkout.
