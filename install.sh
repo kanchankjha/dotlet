@@ -68,7 +68,17 @@ if [ ! -f "$PACKAGE" ]; then
   exit 1
 fi
 
-run_root apt-get install -y "$PACKAGE"
+APT_DIR=$(mktemp -d /tmp/dotlet-install.XXXXXX)
+chmod 0755 "$APT_DIR"
+APT_PACKAGE="$APT_DIR/$(basename "$PACKAGE")"
+cp "$PACKAGE" "$APT_PACKAGE"
+chmod 0644 "$APT_PACKAGE"
+cleanup() {
+  rm -rf "$APT_DIR"
+}
+trap cleanup EXIT HUP INT TERM
+
+run_root apt-get install -y "$APT_PACKAGE"
 
 echo
 echo "Dotlet $VERSION is installed."

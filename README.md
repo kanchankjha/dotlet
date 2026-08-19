@@ -29,6 +29,8 @@ cd dotlet
 
 The script refreshes APT metadata, builds a local `.deb`, and asks APT to install it. APT installs BIND9 and every other declared runtime dependency automatically. The package lifecycle remains managed by APT even though it was built from source.
 
+The installer resolves BIND utilities from the distribution's `PATH`, so it supports both Ubuntu and Kali filesystem layouts. It copies the generated package into a temporary APT-readable directory before installation.
+
 To use existing package indexes without running `apt-get update`:
 
 ```bash
