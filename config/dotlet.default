@@ -2,3 +2,5 @@
 # for remote administration instead of exposing the UI directly.
 DOTLET_LISTEN=127.0.0.1:8080
 DOTLET_DATABASE=/var/lib/dotlet/dotlet.db
+# How often automatic interface address synchronization runs, in seconds.
+DOTLET_SYNC_INTERVAL=15

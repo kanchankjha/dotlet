@@ -4,7 +4,7 @@ Section: net
 Priority: optional
 Architecture: @ARCH@
 Maintainer: Dotlet maintainers <maintainers@localhost>
-Depends: bind9, bind9-utils, dnsutils, python3 (>= 3.10), python3-minimal, adduser, sudo, systemd
+Depends: bind9, bind9-utils, dnsutils, iproute2, python3 (>= 3.10), python3-minimal, adduser, sudo, systemd
 Suggests: apparmor, ufw
 Conflicts: dotlet-dns
 Description: lightweight IPv4 and IPv6 DNS server with a small web UI

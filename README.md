@@ -7,6 +7,7 @@ Dotlet is a lightweight IPv4 and IPv6 DNS server for Ubuntu and Kali Linux. It r
 ## Highlights
 
 - Listens for DNS over UDP and TCP on all IPv4 and IPv6 interfaces.
+- Automatically maintains primary-nameserver A/AAAA records as Linux interface addresses change.
 - Restricts answers and recursion to administrator-defined client networks.
 - Manages A, AAAA, CNAME, MX, TXT, NS, PTR, SRV, and CAA records.
 - Uses SQLite and Python's standard library; there are no pip, npm, or database-server dependencies.
@@ -53,7 +54,7 @@ On a Debian-based build host:
 ```bash
 make test
 make package
-sudo apt install "./dist/dotlet_0.1.2_$(dpkg --print-architecture).deb"
+sudo apt install "./dist/dotlet_0.2.0_$(dpkg --print-architecture).deb"
 ```
 
 If you obtained a prebuilt Dotlet `.deb`, the same `apt install ./dotlet_VERSION_ARCH.deb` command can install it without a source checkout.
@@ -96,6 +97,20 @@ sudo ufw allow from 2001:db8:100::/64 to any port 53 proto tcp
 
 Recursion is disabled by default. If enabled, it remains limited to the same trusted networks; Dotlet is not designed to create an open public resolver.
 
+## Automatic nameserver addresses
+
+In **Access and interface sync**, enable **Automatically synchronize the primary nameserver**. The default interface value `*` follows all eligible current interfaces and automatically discovers new interfaces within 15 seconds.
+
+For every zone whose primary DNS hostname belongs to that zone, Dotlet maintains A and AAAA records for eligible host addresses. For example, `ns1.home.arpa` receives managed records named `ns1` in the `home.arpa` zone. Managed records are visible in the record table and are updated through the same validation, atomic apply, and rollback workflow as manual changes.
+
+Wildcard mode excludes loopback, down interfaces, common container interfaces, link-local addresses, and tentative, deprecated, or temporary IPv6 addresses. To include a normally excluded virtual interface, enter its exact name instead of `*`. If no eligible addresses remain, Dotlet keeps the last published addresses so an in-zone nameserver does not become invalid.
+
+The interval is configurable in `/etc/default/dotlet`:
+
+```text
+DOTLET_SYNC_INTERVAL=15
+```
+
 ## Verification
 
 ```bash
@@ -134,4 +149,4 @@ Removing or purging the package stops Dotlet but deliberately preserves `/var/li
 
 ## Current scope
 
-Dotlet 0.1 is intended for a small internal or lab DNS server. DNSSEC zone signing, secondary-server orchestration, dynamic updates, TLS termination, and detailed query logging are future features.
+Dotlet 0.2 is intended for a small internal or lab DNS server. DNSSEC zone signing, secondary-server orchestration, dynamic updates, TLS termination, and detailed query logging are future features.
