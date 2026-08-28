@@ -163,6 +163,47 @@ make run
 
 The development command uses `/bin/true` instead of applying BIND configuration. The production service always uses the fixed, root-owned `/usr/libexec/dotlet-apply` helper.
 
+## Versioning and Releases
+
+Dotlet follows [Semantic Versioning](https://semver.org/). The canonical version is in `dotlet/__init__.py`.
+
+### Creating a release
+
+1. Update `CHANGELOG.md` with notable changes under the `[Unreleased]` section.
+
+2. Run the appropriate release command:
+
+   ```bash
+   make release-patch   # 0.2.1 -> 0.2.2 (bug fixes)
+   make release-minor   # 0.2.1 -> 0.3.0 (new features)
+   make release-major   # 0.2.1 -> 1.0.0 (breaking changes)
+   ```
+
+   This bumps the version, commits the change, and creates an annotated git tag.
+
+3. Push the commit and tag:
+
+   ```bash
+   git push origin main
+   git push origin v0.2.2  # or the new version tag
+   ```
+
+4. GitHub Actions automatically builds `.deb` packages for amd64 and arm64 and creates a GitHub Release with the packages attached.
+
+### Manual version bump
+
+To bump the version without creating a tag:
+
+```bash
+./scripts/bump-version.sh patch   # or minor, major, or explicit version like 1.0.0
+```
+
+### Checking current version
+
+```bash
+make version
+```
+
 ## Files
 
 | Path | Purpose |
